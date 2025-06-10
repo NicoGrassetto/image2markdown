@@ -133,14 +133,13 @@ def main():
         
         if uploaded_files:
             st.success(f"✅ {len(uploaded_files)} image(s) uploaded successfully!")
-            
-            # Display uploaded images
+              # Display uploaded images
             st.subheader("Uploaded Images")
             for i, uploaded_file in enumerate(uploaded_files):
                 with st.expander(f"📷 {uploaded_file.name}", expanded=True):
                     # Display image
                     image = Image.open(uploaded_file)
-                    st.image(image, caption=uploaded_file.name, use_column_width=True)
+                    st.image(image, caption=uploaded_file.name, use_container_width=True)
                     
                     # Image info
                     st.caption(f"Size: {image.size[0]}x{image.size[1]} pixels | Format: {image.format}")

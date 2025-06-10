@@ -1,173 +1,22 @@
-# Image Analysis CLI with Azure AI Foundry (Managed Identity)
+# Azure AI Image Analysis Demo
 
-A command-line tool that uses Azure AI Foundry's multimodal models to analyze images and provide detailed descriptions. **Now secured with managed identity authentication** for enhanced security.
+A secure, production-ready image analysis application using Azure OpenAI GPT-4o Vision with **managed identity authentication**. This application provides both a command-line interface and a web interface for analyzing images.
 
 ## 🔐 Security Features
 
 - **Managed Identity Authentication**: No API keys stored or transmitted
 - **Azure AD Integration**: Secure token-based authentication
-- **RBAC Support**: Fine-grained access control using Azure roles
+- **ChainedTokenCredential**: Intelligent fallback authentication (Managed Identity → Azure CLI)
 - **Zero Secret Management**: No credentials in code or configuration files
 
-## Features
+## ✨ Features
 
-- Analyzes images using GPT-4o or other multimodal models
-- Supports various image formats (JPEG, PNG, etc.)  
-- Custom prompts for specific analysis needs
-- **Secure managed identity authentication** (recommended for production)
-- Fallback to interactive browser authentication for development
-- Comprehensive error handling and retry logic
-- Connection testing capabilities
-
-## Setup
-
-1. **Create and activate virtual environment:**
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
-
-2. **Install dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Azure OpenAI with Managed Identity:**
-   - Copy `.env.managed-identity` to `.env`
-   - Set your Azure OpenAI endpoint URL
-   - **No API key needed** - managed identity handles authentication
-
-4. **Deploy Infrastructure (if not already deployed):**
-   ```powershell
-   azd up
-   ```
-
-5. **Assign RBAC Role** (if running locally):
-   ```powershell
-   # Get your user principal ID
-   $userPrincipalId = az ad signed-in-user show --query id -o tsv
-   
-   # Assign Cognitive Services OpenAI User role
-   az role assignment create `
-     --role "Cognitive Services OpenAI User" `
-     --assignee $userPrincipalId `
-     --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/YOUR_RESOURCE_GROUP/providers/Microsoft.CognitiveServices/accounts/YOUR_OPENAI_SERVICE"
-   ```
-
-## Usage
-
-### Basic Usage
-```powershell
-python app.py path/to/your/image.jpg
-```
-
-### Test Connection
-```powershell
-python app.py --test-connection
-```
-
-### With Custom Prompt
-```powershell
-python app.py image.png --prompt "Describe the technical aspects of this diagram"
-```
-
-### With User-Assigned Managed Identity
-```powershell
-python app.py photo.jpg --client-id "your-managed-identity-client-id"
-```
-
-### With System Prompt
-```powershell
-python app.py image.jpg --system-prompt "You are a technical analyst" --prompt "Analyze this architecture"
-```
-
-### Streamlit Web Interface
-```powershell
-streamlit run streamlit_app.py
-```
-
-## Command Line Options
-
-- `image_path`: Path to the image file to analyze (required)
-- `--prompt`: Custom prompt for image analysis
-- `--system-prompt`: Custom system prompt to guide AI behavior
-- `--client-id`: Client ID for user-assigned managed identity (optional)
-- `--test-connection`: Test the connection to Azure OpenAI service
-
-## 🔐 Authentication
-
-### Managed Identity (Recommended for Production)
-The application uses Azure managed identity by default, which provides:
-- **Secure**: No secrets stored in code or configuration
-- **Automatic**: Token refresh handled automatically
-- **Auditable**: All access logged through Azure AD
-- **Scalable**: Works across all Azure services
-
-### Authentication Methods (in order of precedence):
-1. **User-Assigned Managed Identity** (if `--client-id` specified)
-2. **System-Assigned Managed Identity** (in Azure environments)
-3. **Azure CLI** (for local development)
-4. **Interactive Browser** (fallback for local development)
-
-### Local Development Setup:
-```powershell
-# Login to Azure CLI
-az login
-
-# Verify your identity
-az account show
-
-# Test the application
-python app.py --test-connection
-```
-
-## Supported Image Formats
-
-- JPEG (.jpg, .jpeg)
-- PNG (.png)
-- BMP (.bmp)
-- GIF (.gif)
-- TIFF (.tiff, .tif)
-
-## Error Handling
-
-The application includes comprehensive error handling for:
-- Missing or invalid image files
-- Network connectivity issues
-- Authentication failures
-- API rate limits (with automatic retry)
-- Invalid model responses
-
-## Examples
-
-```powershell
-# Basic image analysis
-python app.py vacation_photo.jpg
-
-# Technical diagram analysis
-python app.py architecture_diagram.png --prompt "Explain the system architecture shown in this diagram"
-
-# Medical image analysis
-python app.py xray.jpg --prompt "Describe what you see in this medical image"
-
-# Art analysis
-python app.py painting.jpg --prompt "Analyze the artistic style, composition, and color palette"
-```
-
-# Image Analysis with Azure OpenAI (Managed Identity Edition)
-
-A secure, production-ready image analysis application using Azure OpenAI with **managed identity authentication**. This enhanced version eliminates the need for API keys and provides enterprise-grade security.
-
-## 🚀 What's New in This Branch
-
-This `feature/managed-identity-authentication` branch includes:
-
-- **🔐 ChainedTokenCredential**: Intelligent fallback authentication (Managed Identity → Azure CLI)
-- **🏢 Production Ready**: No API keys, secure for enterprise deployment
-- **🔄 Smart Fallback**: Works in Azure (managed identity) and locally (Azure CLI)
-- **📊 Enhanced Logging**: Detailed authentication flow visibility
-- **🛡️ Azure Best Practices**: Follows Microsoft recommended security patterns
-- **⚡ Zero Configuration**: Automatic credential discovery and token refresh
+- **GPT-4o Vision Analysis**: Advanced image understanding and description
+- **Multiple Interfaces**: Command-line and Streamlit web interface
+- **Flexible Prompting**: Custom system and user prompts
+- **Comprehensive Image Support**: JPEG, PNG, BMP, GIF, TIFF formats
+- **Robust Error Handling**: Retry logic and graceful failure handling
+- **Connection Testing**: Built-in connectivity verification
 
 ## 🏗️ Architecture
 
@@ -183,3 +32,209 @@ Local Development:          Azure Production:
 │ (Fallback)      │          │ (Not Needed)    │
 └─────────────────┘          └─────────────────┘
 ```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Azure CLI installed and logged in
+- Azure OpenAI resource with GPT-4o deployment
+
+### 1. Setup Environment
+
+```powershell
+# Clone or download the project
+cd image-analysis-demo
+
+# Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Configure Azure Resources
+
+#### Option A: Deploy Infrastructure (Recommended)
+```powershell
+# Deploy Azure resources using Azure Developer CLI
+azd up
+```
+
+#### Option B: Manual Configuration
+Create a `.env` file with your Azure OpenAI endpoint:
+```
+AZURE_OPENAI_ENDPOINT=https://your-openai-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+```
+
+### 3. Configure Authentication
+
+#### For Local Development:
+```powershell
+# Login to Azure CLI
+az login
+
+# Verify your identity
+az account show
+
+# Assign required role (if needed)
+$userPrincipalId = az ad signed-in-user show --query id -o tsv
+az role assignment create --role "Cognitive Services OpenAI User" --assignee $userPrincipalId --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/YOUR_RESOURCE_GROUP/providers/Microsoft.CognitiveServices/accounts/YOUR_OPENAI_SERVICE"
+```
+
+#### For Production (Azure):
+- Enable managed identity on your Azure service (App Service, Container Apps, etc.)
+- Assign "Cognitive Services OpenAI User" role to the managed identity
+
+## 📖 Usage
+
+### Command Line Interface
+
+#### Basic Analysis
+```powershell
+python app.py path/to/your/image.jpg
+```
+
+#### Test Connection
+```powershell
+python app.py --test-connection dummy
+```
+
+#### Custom Prompts
+```powershell
+python app.py image.png --prompt "Describe the technical aspects of this diagram"
+python app.py image.jpg --system-prompt "You are a technical analyst" --prompt "Analyze this architecture"
+```
+
+#### User-Assigned Managed Identity
+```powershell
+python app.py photo.jpg --client-id "your-managed-identity-client-id"
+```
+
+### Web Interface
+
+```powershell
+streamlit run streamlit_app.py
+```
+
+Then open your browser to `http://localhost:8501` to use the web interface.
+
+## 🛠️ Command Line Options
+
+| Option | Description |
+|--------|-------------|
+| `image_path` | Path to the image file to analyze (required for analysis) |
+| `--prompt` | Custom prompt for image analysis |
+| `--system-prompt` | Custom system prompt to guide AI behavior |
+| `--client-id` | Client ID for user-assigned managed identity (optional) |
+| `--test-connection` | Test the connection to Azure OpenAI service |
+
+## 🔐 Authentication Flow
+
+The application uses `ChainedTokenCredential` with the following priority:
+
+1. **User-Assigned Managed Identity** (if `--client-id` specified)
+2. **System-Assigned Managed Identity** (in Azure environments)
+3. **Azure CLI** (for local development)
+
+This ensures secure, keyless authentication in all scenarios.
+
+## 📁 Project Structure
+
+```
+├── app.py                 # Command-line interface
+├── streamlit_app.py       # Web interface
+├── image_analyzer.py      # Core image analysis logic
+├── requirements.txt       # Python dependencies
+├── azure.yaml            # Azure Developer CLI configuration
+├── README.md             # This file
+└── infra/                # Infrastructure as Code
+    ├── main.bicep        # Bicep template
+    └── main.parameters.json
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL | Required |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | Model deployment name | `gpt-4o` |
+| `AZURE_CLIENT_ID` | User-assigned managed identity client ID | Optional |
+
+### Supported Image Formats
+
+- JPEG (.jpg, .jpeg)
+- PNG (.png)
+- BMP (.bmp)
+- GIF (.gif)
+- TIFF (.tiff, .tif)
+
+## 🚨 Error Handling
+
+The application includes comprehensive error handling for:
+
+- Missing or invalid image files
+- Network connectivity issues
+- Authentication failures
+- API rate limits (with automatic retry)
+- Invalid model responses
+
+## 📊 Examples
+
+```powershell
+# Basic image analysis
+python app.py vacation_photo.jpg
+
+# Technical diagram analysis
+python app.py architecture_diagram.png --prompt "Explain the system architecture shown in this diagram"
+
+# Medical image analysis (ensure compliance with your use case)
+python app.py scan.jpg --prompt "Describe what you see in this medical image"
+
+# Art analysis
+python app.py painting.jpg --prompt "Analyze the artistic style, composition, and color palette"
+```
+
+## 🌐 Deployment
+
+### Azure Container Apps (Recommended)
+
+1. Build and deploy using Azure Developer CLI:
+```powershell
+azd up
+```
+
+2. Enable managed identity on the container app
+3. Assign appropriate RBAC roles
+
+### Azure App Service
+
+1. Deploy the application to App Service
+2. Enable managed identity
+3. Configure environment variables
+4. Assign RBAC roles
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📞 Support
+
+For issues and questions:
+- Check the error handling section above
+- Ensure proper Azure CLI authentication
+- Verify managed identity permissions
+- Review Azure OpenAI service status

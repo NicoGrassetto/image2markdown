@@ -24,13 +24,13 @@ Examples:
   python app.py image.jpg
   python app.py image.png --prompt "Describe the technical aspects of this diagram"
   python app.py photo.jpg --system-prompt "You are a technical analyst"
-  python app.py image.jpg --client-id "your-managed-identity-client-id"
-        """
+  python app.py image.jpg --client-id "your-managed-identity-client-id"        """
     )
     
     parser.add_argument(
         "image_path",
-        help="Path to the image file to analyze"
+        nargs="?",
+        help="Path to the image file to analyze (required unless using --test-connection)"
     )
     
     parser.add_argument(
@@ -51,13 +51,18 @@ Examples:
     parser.add_argument(
         "--test-connection",
         action="store_true",
-        help="Test the connection to Azure OpenAI service"
-    )
+        help="Test the connection to Azure OpenAI service"    )
     
     args = parser.parse_args()
     
+    # Validate arguments
+    if not args.test_connection and not args.image_path:
+        print("Error: image_path is required unless using --test-connection")
+        parser.print_help()
+        sys.exit(1)
+    
     # Validate image file exists (unless just testing connection)
-    if not args.test_connection:
+    if not args.test_connection and args.image_path:
         image_path = Path(args.image_path)
         if not image_path.exists():
             print(f"Error: Image file not found: {args.image_path}")
