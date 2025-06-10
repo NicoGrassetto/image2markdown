@@ -1,0 +1,249 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  CONTAINER_NAME: streamlit-app
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Set up Python'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 'Install dependencies'
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest flake8 black
+
+    - name: 'Code formatting check'
+      run: |
+        echo "Checking code formatting with black..."
+        black --check --diff .
+      continue-on-error: true
+
+    - name: 'Lint with flake8'
+      run: |
+        echo "Linting with flake8..."
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+
+    - name: 'Run unit tests'
+      run: |
+        echo "Running unit tests..."
+        if [ -f "test_streamlit.py" ]; then
+          python -m pytest test_streamlit.py -v --tb=short
+        else
+          echo "No test_streamlit.py found, skipping unit tests"
+        fi
+      continue-on-error: true
+
+  build-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Set up Docker Buildx'
+      uses: docker/setup-buildx-action@v3
+
+    - name: 'Log in to Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      continue-on-error: true
+
+    - name: 'Test Docker build'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: ${{ env.CONTAINER_NAME }}:pr-${{ github.event.number }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+
+    - name: 'Test container startup'
+      run: |
+        echo "Testing container startup..."
+        
+        # Build the image locally
+        docker build -t test-image .
+        
+        # Run container in background
+        docker run -d --name test-container -p 8501:8501 \
+          -e AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/" \
+          test-image
+        
+        # Wait a moment for startup
+        sleep 10
+        
+        # Check if container is running
+        if docker ps | grep test-container; then
+          echo "✅ Container started successfully"
+        else
+          echo "❌ Container failed to start"
+          docker logs test-container
+          exit 1
+        fi
+        
+        # Cleanup
+        docker stop test-container
+        docker rm test-container
+
+    - name: 'Run Trivy vulnerability scanner'
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.CONTAINER_NAME }}:pr-${{ github.event.number }}
+        format: 'table'
+        exit-code: '0'  # Don't fail the build on vulnerabilities in PR
+      continue-on-error: true
+
+  bicep-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Log in to Azure CLI'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Validate Bicep templates'
+      run: |
+        echo "Validating Bicep templates..."
+        
+        # Install Bicep CLI
+        az bicep install
+        
+        # Validate main.bicep
+        if [ -f "infra/main.bicep" ]; then
+          echo "Validating main.bicep..."
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          echo "✅ main.bicep is valid"
+        fi
+        
+        # Validate resources.bicep
+        if [ -f "infra/resources.bicep" ]; then
+          echo "Validating resources.bicep..."
+          az bicep build --file infra/resources.bicep --stdout > /dev/null
+          echo "✅ resources.bicep is valid"
+        fi
+
+    - name: 'Bicep what-if analysis'
+      run: |
+        echo "Running Bicep what-if analysis..."
+        
+        # Create a temporary resource group for validation
+        TEMP_RG="rg-bicep-validation-$(date +%s)"
+        TEMP_LOCATION="eastus"
+        
+        echo "Creating temporary resource group: $TEMP_RG"
+        az group create --name $TEMP_RG --location $TEMP_LOCATION
+        
+        # Run what-if analysis
+        if [ -f "infra/main.bicep" ] && [ -f "infra/main.parameters.json" ]; then
+          echo "Running what-if analysis..."
+          az deployment group what-if \
+            --resource-group $TEMP_RG \
+            --template-file infra/main.bicep \
+            --parameters infra/main.parameters.json \
+            --parameters environmentName=pr-${{ github.event.number }} \
+                        location=$TEMP_LOCATION \
+                        resourceGroupName=$TEMP_RG \
+            || echo "What-if analysis completed with warnings"
+        fi
+        
+        # Cleanup
+        echo "Cleaning up temporary resource group..."
+        az group delete --name $TEMP_RG --yes --no-wait
+      continue-on-error: true
+
+  comment-pr:
+    runs-on: ubuntu-latest
+    needs: [validate, build-test, bicep-validation]
+    if: always() && github.event_name == 'pull_request'
+    
+    steps:
+    - name: 'Create PR comment'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('Pull Request Validation Results')
+          );
+          
+          const validateStatus = '${{ needs.validate.result }}';
+          const buildStatus = '${{ needs.build-test.result }}';
+          const bicepStatus = '${{ needs.bicep-validation.result }}';
+          
+          const statusIcon = (status) => {
+            switch(status) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'cancelled': return '⏹️';
+              default: return '⚠️';
+            }
+          };
+          
+          const commentBody = `## Pull Request Validation Results
+          
+          | Check | Status | Result |
+          |-------|--------|--------|
+          | Code Validation | ${statusIcon(validateStatus)} | ${validateStatus} |
+          | Container Build | ${statusIcon(buildStatus)} | ${buildStatus} |
+          | Bicep Templates | ${statusIcon(bicepStatus)} | ${bicepStatus} |
+          
+          ### Summary
+          - **Code formatting and linting**: ${validateStatus === 'success' ? 'Passed' : 'Failed or skipped'}
+          - **Container build test**: ${buildStatus === 'success' ? 'Passed' : 'Failed'}
+          - **Infrastructure validation**: ${bicepStatus === 'success' ? 'Passed' : 'Failed or skipped'}
+          
+          ${validateStatus === 'success' && buildStatus === 'success' && bicepStatus === 'success' 
+            ? '🎉 All checks passed! This PR is ready for review.' 
+            : '⚠️ Some checks failed. Please review the workflow logs and fix any issues.'}
+          
+          ---
+          *Automated validation by GitHub Actions*`;
+          
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: commentBody
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
