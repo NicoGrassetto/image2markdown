@@ -12,7 +12,7 @@ from typing import Optional
 from pathlib import Path
 
 from openai import AzureOpenAI
-from azure.identity import ChainedTokenCredential, ManagedIdentityCredential, AzureCliCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential, AzureCliCredential, ChainedTokenCredential
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -67,26 +67,28 @@ class AzureImageAnalyzer:
     def _get_azure_credential(self):
         """
         Get Azure credential with intelligent fallback for different environments.
-        Uses ChainedTokenCredential to try managed identity first, then Azure CLI.
+        Tries managed identity first (for Azure environments), then Azure CLI (for local dev).
         
         Returns:
             Azure credential object
         """
         try:
             if self.client_id:
-                # Use user-assigned managed identity with Azure CLI fallback
-                logger.info(f"Setting up authentication chain: User-assigned managed identity ({self.client_id}) -> Azure CLI")
-                return ChainedTokenCredential(
+                # Use user-assigned managed identity if client ID is provided
+                logger.info(f"Attempting user-assigned managed identity: {self.client_id}")
+                
+                # Create a chained credential that tries managed identity first, then Azure CLI
+                credentials = [
                     ManagedIdentityCredential(client_id=self.client_id),
                     AzureCliCredential()
-                )
+                ]
+                
+                return ChainedTokenCredential(*credentials)
             else:
-                # Use system-assigned managed identity with Azure CLI fallback
-                logger.info("Setting up authentication chain: System-assigned managed identity -> Azure CLI")
-                return ChainedTokenCredential(
-                    ManagedIdentityCredential(),
-                    AzureCliCredential()
-                )
+                # Use DefaultAzureCredential which has built-in fallback chain
+                logger.info("Using DefaultAzureCredential with fallback chain")
+                return DefaultAzureCredential()
+                
         except Exception as e:
             logger.error(f"Failed to initialize Azure credential: {str(e)}")
             raise
@@ -247,9 +249,9 @@ class AzureImageAnalyzer:
             Dictionary with service information
         """
         # Determine authentication method being used
-        auth_method = "Managed Identity -> Azure CLI (ChainedTokenCredential)"
+        auth_method = "Managed Identity + Azure CLI Fallback"
         if self.client_id:
-            auth_method = f"User-Assigned Managed Identity ({self.client_id}) -> Azure CLI"
+            auth_method = f"User-Assigned Managed Identity ({self.client_id}) + Azure CLI Fallback"
         
         return {
             "endpoint": self.endpoint,

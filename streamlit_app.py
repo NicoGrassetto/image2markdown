@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-Streamlit Image Analysis App
-Upload images and analyze them using Azure OpenAI GPT-4o vision.
+Streamlit Image Analysis App with Managed Identity
+Upload images and analyze them using Azure OpenAI GPT-4o vision with secure authentication.
 """
 
 import streamlit as st
 from PIL import Image
 import io
 from typing import List
+import logging
 
 from image_analyzer import AzureImageAnalyzer
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Configure Streamlit page
 st.set_page_config(
-    page_title="Azure AI Image Analyzer",
+    page_title="Azure AI Image Analyzer (Managed Identity)",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -22,9 +27,29 @@ st.set_page_config(
 # Initialize session state
 if 'analyzer' not in st.session_state:
     try:
-        st.session_state.analyzer = AzureImageAnalyzer()
+        # Get client ID from environment or user input
+        client_id = st.sidebar.text_input(
+            "Managed Identity Client ID (optional)", 
+            value="",
+            help="Leave empty to use system-assigned managed identity"
+        )
+        
+        st.session_state.analyzer = AzureImageAnalyzer(
+            client_id=client_id if client_id.strip() else None
+        )
+        st.sidebar.success("✅ Connected with managed identity")
+        
+        # Display connection info
+        info = st.session_state.analyzer.get_service_info()
+        st.sidebar.info(f"Authentication: {info['authentication']}")
+        st.sidebar.info(f"Identity: {info['client_id']}")
+        
     except Exception as e:
-        st.error(f"Failed to initialize Azure OpenAI: {str(e)}")
+        st.error(f"Failed to initialize Azure OpenAI with managed identity: {str(e)}")
+        st.error("Please ensure:")
+        st.error("1. You're running on Azure or have Azure CLI logged in")
+        st.error("2. Managed identity has 'Cognitive Services OpenAI User' role")
+        st.error("3. AZURE_OPENAI_ENDPOINT environment variable is set")
         st.stop()
 
 def analyze_single_image(image_bytes: bytes, system_prompt: str, user_prompt: str) -> str:
@@ -37,14 +62,24 @@ def analyze_single_image(image_bytes: bytes, system_prompt: str, user_prompt: st
         )
         return result
     except Exception as e:
+        logger.error(f"Error analyzing image: {str(e)}")
         return f"Error analyzing image: {str(e)}"
 
 def main():
     """Main Streamlit application."""
+      # Header
+    st.title("🔍 Azure AI Image Analyzer (Managed Identity)")
+    st.markdown("Upload images and analyze them using Azure OpenAI GPT-4o vision with secure managed identity authentication.")
     
-    # Header
-    st.title("🔍 Azure AI Image Analyzer")
-    st.markdown("Upload images and analyze them using Azure OpenAI GPT-4o vision capabilities.")
+    # Connection test
+    col_test1, col_test2 = st.columns([3, 1])
+    with col_test2:
+        if st.button("🔄 Test Connection", type="secondary"):
+            with st.spinner("Testing connection..."):
+                if st.session_state.analyzer.test_connection():
+                    st.success("✅ Connection successful!")
+                else:
+                    st.error("❌ Connection failed!")
     
     # Sidebar for configuration
     with st.sidebar:
@@ -71,12 +106,14 @@ def main():
             height=100,
             help="This prompt specifies what analysis you want performed on each image."
         )
-        
-        # Model information
+          # Model information
         st.subheader("ℹ️ Model Info")
-        st.markdown("""
-        - **Model**: GPT-4o Vision
-        - **Provider**: Azure OpenAI
+        info = st.session_state.analyzer.get_service_info()
+        st.markdown(f"""
+        - **Model**: {info['model']}
+        - **Provider**: {info['service']}
+        - **Authentication**: {info['authentication']}
+        - **Identity**: {info['client_id']}
         - **Mode**: Stateless (no conversation history)
         """)
     

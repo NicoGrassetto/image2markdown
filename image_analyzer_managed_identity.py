@@ -2,7 +2,6 @@
 """
 Image Analysis Module using Azure OpenAI with Managed Identity
 Provides secure, stateless image analysis capabilities using Azure AD authentication.
-This module supports both managed identity (for Azure environments) and Azure CLI (for local development).
 """
 
 import base64
@@ -12,7 +11,8 @@ from typing import Optional
 from pathlib import Path
 
 from openai import AzureOpenAI
-from azure.identity import ChainedTokenCredential, ManagedIdentityCredential, AzureCliCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
+from azure.keyvault.secrets import SecretClient
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -24,20 +24,20 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-class AzureImageAnalyzer:
+class AzureImageAnalyzerManagedIdentity:
     """
-    Secure image analyzer using Azure OpenAI with Azure AD authentication.
-    Supports managed identity for Azure environments and Azure CLI for local development.
+    Secure image analyzer using Azure OpenAI with Managed Identity authentication.
+    Follows Azure security best practices with Azure AD authentication and no API keys.
     """
     
     def __init__(self, client_id: Optional[str] = None):
         """
-        Initialize the image analyzer with Azure AD authentication.
+        Initialize the image analyzer with Managed Identity authentication.
         
         Args:
             client_id: Optional client ID for user-assigned managed identity
         """
-        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_AI_ENDPOINT")
+        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         self.api_version = "2024-12-01-preview"
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
         self.client_id = client_id or os.getenv("AZURE_CLIENT_ID")
@@ -49,44 +49,37 @@ class AzureImageAnalyzer:
                 "This should be your Azure OpenAI endpoint URL."
             )
         
-        # Initialize Azure credential with intelligent fallback
+        # Initialize Azure credential with fallback options
         self.credential = self._get_azure_credential()
         
-        # Initialize Azure OpenAI client
+        # Initialize Azure OpenAI client with managed identity
         try:
             self.client = AzureOpenAI(
                 api_version=self.api_version,
                 azure_endpoint=self.endpoint,
                 azure_ad_token_provider=self._get_token_provider(),
             )
-            logger.info("Successfully initialized Azure OpenAI client")
+            logger.info("Successfully initialized Azure OpenAI client with managed identity")
         except Exception as e:
             logger.error(f"Failed to initialize Azure OpenAI client: {str(e)}")
             raise RuntimeError(f"Failed to initialize Azure OpenAI client: {str(e)}")
     
     def _get_azure_credential(self):
         """
-        Get Azure credential with intelligent fallback for different environments.
-        Uses ChainedTokenCredential to try managed identity first, then Azure CLI.
+        Get Azure credential with fallback chain for different deployment scenarios.
         
         Returns:
             Azure credential object
         """
         try:
             if self.client_id:
-                # Use user-assigned managed identity with Azure CLI fallback
-                logger.info(f"Setting up authentication chain: User-assigned managed identity ({self.client_id}) -> Azure CLI")
-                return ChainedTokenCredential(
-                    ManagedIdentityCredential(client_id=self.client_id),
-                    AzureCliCredential()
-                )
+                # Use user-assigned managed identity if client ID is provided
+                logger.info(f"Using user-assigned managed identity: {self.client_id}")
+                return ManagedIdentityCredential(client_id=self.client_id)
             else:
-                # Use system-assigned managed identity with Azure CLI fallback
-                logger.info("Setting up authentication chain: System-assigned managed identity -> Azure CLI")
-                return ChainedTokenCredential(
-                    ManagedIdentityCredential(),
-                    AzureCliCredential()
-                )
+                # Use DefaultAzureCredential for automatic credential chain
+                logger.info("Using DefaultAzureCredential for authentication")
+                return DefaultAzureCredential()
         except Exception as e:
             logger.error(f"Failed to initialize Azure credential: {str(e)}")
             raise
@@ -136,13 +129,13 @@ class AzureImageAnalyzer:
     def analyze_image(
         self, 
         image_data, 
-        system_prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None, 
         user_prompt: Optional[str] = None,
         max_tokens: int = 1000,
         temperature: float = 0.1
     ) -> str:
         """
-        Analyze an image using Azure OpenAI GPT-4o vision.
+        Analyze an image using Azure OpenAI GPT-4o vision with managed identity.
         
         Args:
             image_data: Image file path (str/Path) or image bytes
@@ -239,6 +232,46 @@ class AzureImageAnalyzer:
                 logger.warning(f"Attempt {attempt + 1} failed, retrying in {wait_time} seconds: {str(e)}")
                 time.sleep(wait_time)
     
+    def analyze_multiple_images(
+        self, 
+        image_list, 
+        system_prompt: Optional[str] = None, 
+        user_prompt: Optional[str] = None
+    ) -> list:
+        """
+        Analyze multiple images individually.
+        
+        Args:
+            image_list: List of image paths or bytes
+            system_prompt: Optional system prompt
+            user_prompt: Optional user prompt
+            
+        Returns:
+            List of analysis results
+        """
+        results = []
+        for i, image_data in enumerate(image_list):
+            try:
+                result = self.analyze_image(
+                    image_data=image_data,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt
+                )
+                results.append({
+                    "index": i,
+                    "success": True,
+                    "result": result
+                })
+            except Exception as e:
+                logger.error(f"Failed to analyze image {i}: {str(e)}")
+                results.append({
+                    "index": i,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return results
+    
     def get_service_info(self) -> dict:
         """
         Get information about the Azure OpenAI service configuration.
@@ -246,17 +279,12 @@ class AzureImageAnalyzer:
         Returns:
             Dictionary with service information
         """
-        # Determine authentication method being used
-        auth_method = "Managed Identity -> Azure CLI (ChainedTokenCredential)"
-        if self.client_id:
-            auth_method = f"User-Assigned Managed Identity ({self.client_id}) -> Azure CLI"
-        
         return {
             "endpoint": self.endpoint,
             "deployment_name": self.deployment_name,
             "api_version": self.api_version,
-            "authentication": auth_method,
-            "client_id": self.client_id or "System-assigned or Azure CLI",
+            "authentication": "Managed Identity",
+            "client_id": self.client_id or "System-assigned",
             "service": "Azure OpenAI",
             "model": "GPT-4o Vision"
         }
@@ -280,3 +308,50 @@ class AzureImageAnalyzer:
         except Exception as e:
             logger.error(f"Connection test failed: {str(e)}")
             return False
+
+
+# For backward compatibility and ease of migration
+class AzureImageAnalyzer(AzureImageAnalyzerManagedIdentity):
+    """
+    Backward compatible alias that uses managed identity by default.
+    """
+    pass
+
+
+# Example usage and testing
+if __name__ == "__main__":
+    import sys
+    
+    try:
+        # Initialize analyzer with managed identity
+        print("Initializing Azure Image Analyzer with Managed Identity...")
+        analyzer = AzureImageAnalyzerManagedIdentity()
+        
+        # Print service info
+        print("\nAzure OpenAI Configuration:")
+        info = analyzer.get_service_info()
+        for key, value in info.items():
+            print(f"  {key}: {value}")
+        
+        # Test connection
+        print("\nTesting connection...")
+        if analyzer.test_connection():
+            print("✅ Connection successful!")
+        else:
+            print("❌ Connection failed!")
+            sys.exit(1)
+        
+        print("\n" + "="*50)
+        print("SETUP COMPLETE")
+        print("="*50)
+        print("Your application is now configured to use managed identity for secure authentication.")
+        print("No API keys are stored or transmitted - authentication is handled by Azure AD.")
+        
+    except Exception as e:
+        print(f"❌ Setup failed: {str(e)}")
+        print("\nTroubleshooting steps:")
+        print("1. Ensure you're running on Azure (App Service, Container Apps, etc.) or have Azure CLI logged in")
+        print("2. Verify the managed identity has 'Cognitive Services OpenAI User' role")
+        print("3. Check that AZURE_OPENAI_ENDPOINT environment variable is set")
+        print("4. Ensure Azure OpenAI service has disableLocalAuth set to true")
+        sys.exit(1)
