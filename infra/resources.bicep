@@ -24,6 +24,15 @@ param appInsightsName string
 @description('Name of the user-assigned managed identity')
 param userManagedIdentityName string
 
+@description('Name of the Azure Container Registry')
+param containerRegistryName string
+
+@description('Name of the App Service Plan')
+param appServicePlanName string
+
+@description('Name of the App Service (Web App)')
+param appServiceName string
+
 @description('Location for all resources')
 param location string
 
@@ -156,6 +165,109 @@ resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   }
 }
 
+// Azure Container Registry
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
+  name: containerRegistryName
+  location: location
+  tags: tags
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: true
+    publicNetworkAccess: 'Enabled'
+    dataEndpointEnabled: false
+    networkRuleBypassOptions: 'AzureServices'
+  }
+}
+
+// RBAC Role Assignment: Grant ACR Pull role to managed identity
+resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, userManagedIdentity.id, 'AcrPull')
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d') // AcrPull
+    principalId: userManagedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// App Service Plan for Linux containers
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
+  name: appServicePlanName
+  location: location
+  tags: tags
+  kind: 'linux'
+  properties: {
+    reserved: true // Required for Linux
+  }
+  sku: {
+    name: 'B1'
+    tier: 'Basic'
+  }
+}
+
+// App Service (Web App) for containers
+resource appService 'Microsoft.Web/sites@2024-04-01' = {
+  name: appServiceName
+  location: location
+  tags: union(tags, {
+    'azd-service-name': 'streamlit-app'
+  })
+  kind: 'app,linux,container'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userManagedIdentity.id}': {}
+    }
+  }
+  properties: {
+    serverFarmId: appServicePlan.id
+    reserved: true
+    httpsOnly: true
+    clientAffinityEnabled: false
+    siteConfig: {
+      linuxFxVersion: 'DOCKER|${containerRegistry.properties.loginServer}/streamlit-app:latest'
+      acrUseManagedIdentityCreds: true
+      acrUserManagedIdentityID: userManagedIdentity.properties.clientId
+      appSettings: [
+        {
+          name: 'AZURE_CLIENT_ID'
+          value: userManagedIdentity.properties.clientId
+        }
+        {
+          name: 'AZURE_OPENAI_ENDPOINT'
+          value: openAiService.properties.endpoint
+        }
+        {
+          name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE'
+          value: 'false'
+        }
+        {
+          name: 'WEBSITES_PORT'
+          value: '8501'
+        }
+      ]
+      cors: {
+        allowedOrigins: [
+          '*'
+        ]
+        supportCredentials: false
+      }
+      alwaysOn: true
+      httpLoggingEnabled: true
+      logsDirectorySizeLimit: 35
+      detailedErrorLoggingEnabled: true
+      ftpsState: 'Disabled'
+      minTlsVersion: '1.2'
+    }
+  }
+  dependsOn: [
+    acrPullRoleAssignment
+    openAiRoleAssignment
+  ]
+}
+
 // Azure AI Hub (Machine Learning Workspace configured as Hub)
 resource aiHub 'Microsoft.MachineLearningServices/workspaces@2024-10-01' = {
   name: aiHubName
@@ -240,3 +352,8 @@ output userManagedIdentityName string = userManagedIdentity.name
 output userManagedIdentityId string = userManagedIdentity.id
 output userManagedIdentityClientId string = userManagedIdentity.properties.clientId
 output userManagedIdentityPrincipalId string = userManagedIdentity.properties.principalId
+output containerRegistryName string = containerRegistry.name
+output containerRegistryLoginServer string = containerRegistry.properties.loginServer
+output appServicePlanName string = appServicePlan.name
+output appServiceName string = appService.name
+output appServiceDefaultHostName string = appService.properties.defaultHostName

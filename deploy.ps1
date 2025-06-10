@@ -45,6 +45,15 @@ function Test-Prerequisites {
         exit 1
     }
     
+    # Check Docker
+    try {
+        $null = Get-Command docker -ErrorAction Stop
+    }
+    catch {
+        Write-Error "Docker is not installed. Please install Docker Desktop first."
+        exit 1
+    }
+    
     # Check if logged in to Azure
     try {
         $null = az account show --query id -o tsv 2>$null
@@ -54,6 +63,18 @@ function Test-Prerequisites {
     }
     catch {
         Write-Error "Not logged in to Azure. Please run 'az login' first."
+        exit 1
+    }
+    
+    # Check if Docker is running
+    try {
+        docker info | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker not running"
+        }
+    }
+    catch {
+        Write-Error "Docker is not running. Please start Docker Desktop."
         exit 1
     }
     
@@ -184,6 +205,10 @@ function Get-DeploymentOutputs {
         $resourceGroup = $outputs.resourceGroupName.value
         $openAiEndpoint = $outputs.openAiEndpoint.value
         $clientId = $outputs.userManagedIdentityClientId.value
+        $containerRegistry = $outputs.containerRegistryName.value
+        $loginServer = $outputs.containerRegistryLoginServer.value
+        $appServiceName = $outputs.appServiceName.value
+        $appServiceUrl = "https://$($outputs.appServiceDefaultHostName.value)"
         
         # Create .env file for local development
         Write-Status "Creating .env file for local development..."
@@ -197,6 +222,14 @@ AZURE_LOCATION=$Location
 RESOURCE_GROUP_NAME=$resourceGroup
 AZURE_OPENAI_ENDPOINT=$openAiEndpoint
 AZURE_CLIENT_ID=$clientId
+
+# Container Registry
+AZURE_CONTAINER_REGISTRY_NAME=$containerRegistry
+AZURE_CONTAINER_REGISTRY_LOGIN_SERVER=$loginServer
+
+# App Service
+AZURE_APP_SERVICE_NAME=$appServiceName
+AZURE_APP_SERVICE_URL=$appServiceUrl
 
 # For local development, you may need to set these:
 # AZURE_TENANT_ID=your_tenant_id
@@ -215,12 +248,97 @@ AZURE_CLIENT_ID=$clientId
         Write-Host $openAiEndpoint
         Write-Host "✓ Managed Identity Client ID: " -ForegroundColor Green -NoNewline
         Write-Host $clientId
+        Write-Host "✓ Container Registry: " -ForegroundColor Green -NoNewline
+        Write-Host $loginServer
+        Write-Host "✓ App Service: " -ForegroundColor Green -NoNewline
+        Write-Host $appServiceUrl
         Write-Host "===================================================================" -ForegroundColor Cyan
         Write-Host ""
+        
+        return @{
+            ResourceGroup = $resourceGroup
+            ContainerRegistry = $containerRegistry
+            LoginServer = $loginServer
+            AppServiceName = $appServiceName
+            AppServiceUrl = $appServiceUrl
+        }
     }
     catch {
         Write-Warning "Could not retrieve deployment outputs. Manual configuration may be required."
         Write-Warning "Error: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# Build and push container image
+function Build-AndPushContainer {
+    param(
+        [string]$ContainerRegistry,
+        [string]$LoginServer,
+        [string]$ResourceGroup
+    )
+    
+    Write-Status "Building and pushing container image..."
+    
+    try {
+        # Login to Azure Container Registry using Azure CLI
+        Write-Status "Logging into Azure Container Registry..."
+        az acr login --name $ContainerRegistry
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to login to Azure Container Registry"
+        }
+        
+        # Build the container image
+        $imageName = "streamlit-app"
+        $imageTag = "latest"
+        $fullImageName = "$LoginServer/${imageName}:$imageTag"
+        
+        Write-Status "Building container image: $fullImageName"
+        docker build -t $fullImageName .
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to build container image"
+        }
+        
+        # Push the container image
+        Write-Status "Pushing container image to registry..."
+        docker push $fullImageName
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to push container image"
+        }
+        
+        Write-Success "Container image built and pushed successfully!"
+        return $fullImageName
+    }
+    catch {
+        Write-Error "Failed to build and push container: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# Restart App Service to pull latest image
+function Restart-AppService {
+    param(
+        [string]$AppServiceName,
+        [string]$ResourceGroup
+    )
+    
+    Write-Status "Restarting App Service to pull latest container image..."
+    
+    try {
+        az webapp restart --name $AppServiceName --resource-group $ResourceGroup
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "App Service restarted successfully!"
+        }
+        else {
+            Write-Warning "Failed to restart App Service. You may need to restart it manually."
+        }
+    }
+    catch {
+        Write-Warning "Failed to restart App Service: $($_.Exception.Message)"
     }
 }
 
@@ -228,26 +346,49 @@ AZURE_CLIENT_ID=$clientId
 function Main {
     Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host "  Azure AI Image Analysis Demo Deployment" -ForegroundColor Cyan
+    Write-Host "  with Container Registry & App Service" -ForegroundColor Cyan
     Write-Host "==========================================" -ForegroundColor Cyan
     Write-Host ""
     
     Test-Prerequisites
     Set-Defaults
     $deploymentName = Deploy-Infrastructure
-    Get-DeploymentOutputs -DeploymentName $deploymentName
+    $deploymentInfo = Get-DeploymentOutputs -DeploymentName $deploymentName
     
-    Write-Host ""
-    Write-Success "Deployment completed successfully!"
-    Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "1. The infrastructure is now deployed and ready to use"
-    Write-Host "2. Update your application configuration with the values from .env"
-    Write-Host "3. If running locally, ensure you're logged in with 'az login'"
-    Write-Host "4. If deploying to Azure (App Service, etc.), configure managed identity"
-    Write-Host ""
-    Write-Host "For the Streamlit app:" -ForegroundColor Yellow
-    Write-Host "1. Install dependencies: pip install -r requirements.txt"
-    Write-Host "2. Run the app: streamlit run streamlit_app.py"
+    if ($deploymentInfo) {
+        # Build and push container image
+        $imageName = Build-AndPushContainer -ContainerRegistry $deploymentInfo.ContainerRegistry -LoginServer $deploymentInfo.LoginServer -ResourceGroup $deploymentInfo.ResourceGroup
+        
+        if ($imageName) {
+            # Restart App Service to pull the latest image
+            Restart-AppService -AppServiceName $deploymentInfo.AppServiceName -ResourceGroup $deploymentInfo.ResourceGroup
+            
+            Write-Host ""
+            Write-Success "Deployment completed successfully!"
+            Write-Host ""
+            Write-Host "🌐 Your Streamlit app is now running at:" -ForegroundColor Yellow
+            Write-Host "   $($deploymentInfo.AppServiceUrl)" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Next steps:" -ForegroundColor Yellow
+            Write-Host "1. The containerized app is now deployed and running in Azure App Service"
+            Write-Host "2. The app uses managed identity for secure authentication to Azure OpenAI"
+            Write-Host "3. Container images are stored in Azure Container Registry"
+            Write-Host "4. To update the app, rebuild the container and push to ACR"
+            Write-Host ""
+            Write-Host "To update the application:" -ForegroundColor Yellow
+            Write-Host "1. Make changes to your code"
+            Write-Host "2. Run: docker build -t $($deploymentInfo.LoginServer)/streamlit-app:latest ."
+            Write-Host "3. Run: docker push $($deploymentInfo.LoginServer)/streamlit-app:latest"
+            Write-Host "4. Restart the App Service to pull the latest image"
+        }
+        else {
+            Write-Warning "Container build failed. Manual intervention may be required."
+        }
+    }
+    else {
+        Write-Warning "Could not retrieve deployment information. Check the Azure portal for resource status."
+    }
+    
     Write-Host ""
 }
 

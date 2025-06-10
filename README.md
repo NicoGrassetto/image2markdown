@@ -1,240 +1,277 @@
-# Azure AI Image Analysis Demo
+# 🚀 Azure AI Image Analysis Demo with Automated CI/CD
 
-A secure, production-ready image analysis application using Azure OpenAI GPT-4o Vision with **managed identity authentication**. This application provides both a command-line interface and a web interface for analyzing images.
+A fully containerized Streamlit application leveraging Azure OpenAI's GPT-4o vision model for intelligent image analysis, complete with **automated CI/CD pipeline** that builds and deploys on every commit.
 
-## 🔐 Security Features
+## ✨ Key Features
 
-- **Managed Identity Authentication**: No API keys stored or transmitted
-- **Azure AD Integration**: Secure token-based authentication
-- **ChainedTokenCredential**: Intelligent fallback authentication (Managed Identity → Azure CLI)
-- **Zero Secret Management**: No credentials in code or configuration files
-
-## ✨ Features
-
-- **GPT-4o Vision Analysis**: Advanced image understanding and description
-- **Multiple Interfaces**: Command-line and Streamlit web interface
-- **Flexible Prompting**: Custom system and user prompts
-- **Comprehensive Image Support**: JPEG, PNG, BMP, GIF, TIFF formats
-- **Robust Error Handling**: Retry logic and graceful failure handling
-- **Connection Testing**: Built-in connectivity verification
+- 🤖 **AI-Powered Image Analysis** using Azure OpenAI GPT-4o
+- 🐳 **Containerized Deployment** with Azure Container Registry + App Service  
+- 🔄 **Automated CI/CD** - Deploy on every commit to main/develop
+- 🔐 **Secure Authentication** using Azure Managed Identity
+- 🛡️ **Security Scanning** with Trivy vulnerability detection
+- 📊 **Health Monitoring** with built-in checks and Application Insights
+- 🧪 **Automated Testing** and integration validation
 
 ## 🏗️ Architecture
 
+```mermaid
+graph TB
+    subgraph "Development"
+        A[Local Development] --> B[Git Commit]
+        B --> C[GitHub Repository]
+    end
+    
+    subgraph "CI/CD Pipeline"
+        C --> D[GitHub Actions]
+        D --> E[Container Build]
+        E --> F[Security Scan]
+        F --> G[Push to ACR]
+    end
+    
+    subgraph "Azure Infrastructure"
+        G --> H[Azure Container Registry]
+        H --> I[Azure App Service]
+        I --> J[Azure OpenAI Service]
+        I --> K[Application Insights]
+        L[Managed Identity] --> I
+        L --> J
+    end
+    
+    subgraph "Monitoring"
+        I --> M[Health Checks]
+        I --> N[Integration Tests]
+        H --> O[Image Cleanup]
+    end
 ```
-Local Development:          Azure Production:
-┌─────────────────┐         ┌─────────────────┐
-│ Managed Identity│──❌──┐  │ Managed Identity│──✅──┐
-│ (Not Available) │       │  │ (Available)     │      │
-└─────────────────┘       │  └─────────────────┘      │
-                          │                           │
-┌─────────────────┐       │  ┌─────────────────┐      │
-│ Azure CLI       │──✅──┘  │ Azure CLI       │──⏸️──┘
-│ (Fallback)      │          │ (Not Needed)    │
-└─────────────────┘          └─────────────────┘
-```
 
-## 🚀 Quick Start
+### Azure Services Used
 
-### Prerequisites
+- **Azure Container Registry** - Secure container image storage
+- **Azure App Service** - Scalable web app hosting
+- **Azure OpenAI Service** - GPT-4o vision model for image analysis
+- **User-Assigned Managed Identity** - Secure authentication
+- **Azure AI Hub & Project** - AI project management
+- **Application Insights** - Monitoring and telemetry
+- **Storage Account** - Required for AI Hub
+- **Key Vault** - Secure credential storage
 
-- Python 3.8+
-- Azure CLI installed and logged in
-- Azure OpenAI resource with GPT-4o deployment
+## 🚀 Quick Start - Automated Setup
 
-### 1. Setup Environment
+### One-Command Setup
 
 ```powershell
-# Clone or download the project
+# Complete automated CI/CD setup
+.\setup-complete-cicd.ps1
+```
+
+This script will:
+1. ✅ Deploy Azure infrastructure
+2. ✅ Validate all prerequisites  
+3. ✅ Create service principal for GitHub Actions
+4. ✅ Set up automated CI/CD pipeline
+5. ✅ Provide GitHub secrets configuration
+6. ✅ Test the automation with first deployment
+
+### Step-by-Step Setup
+
+#### 1. Deploy Infrastructure
+
+```powershell
+# Deploy with Azure Developer CLI (recommended)
+.\deploy-azd.ps1 -EnvironmentName "your-app-name"
+
+# Or with traditional Azure CLI
+.\deploy.ps1 -EnvironmentName "your-app-name"
+```
+
+#### 2. Set Up Automated CI/CD
+
+```powershell
+# Validate prerequisites and create service principal
+.\validate-cicd-setup.ps1 -CreateServicePrincipal
+
+# Follow the output to configure GitHub secrets
+```
+
+#### 3. Test Automation
+
+```powershell
+# Trigger automated build and deployment
+.\test-cicd-trigger.ps1
+```
+
+## 🔄 Automated CI/CD Pipeline
+
+### What Triggers the Pipeline
+
+- ✅ **Push to main branch** → Full build, deploy, and test
+- ✅ **Push to develop branch** → Build and security scan
+- ✅ **Pull requests to main** → Build and validation
+- ✅ **Manual dispatch** → On-demand deployment
+
+### Pipeline Steps
+
+```yaml
+Build → Security Scan → Push to ACR → Deploy to App Service → Health Check → Integration Test → Cleanup
+```
+
+### Automated Actions
+
+- 🔨 **Container Build** - Docker image with Python 3.11 slim
+- 🔒 **Security Scanning** - Trivy vulnerability detection
+- 📦 **Image Push** - Automatic push to Azure Container Registry
+- 🚀 **Deployment** - Zero-downtime deployment to App Service
+- 🏥 **Health Checks** - Automated application health verification
+- 🧪 **Integration Tests** - End-to-end functionality testing
+- 🧹 **Cleanup** - Automatic removal of old container images
+
+## 📋 Prerequisites
+
+- **Azure CLI** ([Install](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli))
+- **Docker Desktop** ([Install](https://docs.docker.com/get-docker/))
+- **Azure Developer CLI** ([Install](https://aka.ms/azure-dev/install)) - Optional but recommended
+- **GitHub repository** for your code
+- **Azure subscription** with appropriate permissions
+
+## 🛠️ Development Workflow
+
+### Local Development
+
+```bash
+# Clone and setup
+git clone <your-repository>
 cd image-analysis-demo
-
-# Create and activate virtual environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. Configure Azure Resources
-
-#### Option A: Deploy Infrastructure (Recommended)
-```powershell
-# Deploy Azure resources using Azure Developer CLI
-azd up
-```
-
-#### Option B: Manual Configuration
-Create a `.env` file with your Azure OpenAI endpoint:
-```
-AZURE_OPENAI_ENDPOINT=https://your-openai-resource.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
-```
-
-### 3. Configure Authentication
-
-#### For Local Development:
-```powershell
-# Login to Azure CLI
+# Run locally (requires Azure login)
 az login
-
-# Verify your identity
-az account show
-
-# Assign required role (if needed)
-$userPrincipalId = az ad signed-in-user show --query id -o tsv
-az role assignment create --role "Cognitive Services OpenAI User" --assignee $userPrincipalId --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/YOUR_RESOURCE_GROUP/providers/Microsoft.CognitiveServices/accounts/YOUR_OPENAI_SERVICE"
-```
-
-#### For Production (Azure):
-- Enable managed identity on your Azure service (App Service, Container Apps, etc.)
-- Assign "Cognitive Services OpenAI User" role to the managed identity
-
-## 📖 Usage
-
-### Command Line Interface
-
-#### Basic Analysis
-```powershell
-python app.py path/to/your/image.jpg
-```
-
-#### Test Connection
-```powershell
-python app.py --test-connection dummy
-```
-
-#### Custom Prompts
-```powershell
-python app.py image.png --prompt "Describe the technical aspects of this diagram"
-python app.py image.jpg --system-prompt "You are a technical analyst" --prompt "Analyze this architecture"
-```
-
-#### User-Assigned Managed Identity
-```powershell
-python app.py photo.jpg --client-id "your-managed-identity-client-id"
-```
-
-### Web Interface
-
-```powershell
 streamlit run streamlit_app.py
 ```
 
-Then open your browser to `http://localhost:8501` to use the web interface.
+### Making Changes
 
-## 🛠️ Command Line Options
+1. **Make your code changes**
+2. **Commit and push to main/develop**:
+   ```bash
+   git add .
+   git commit -m "feat: your feature description"
+   git push origin main
+   ```
+3. **Automated pipeline runs automatically**
+4. **Monitor in GitHub Actions tab**
+5. **Visit your deployed app** (URL provided in deployment output)
 
-| Option | Description |
-|--------|-------------|
-| `image_path` | Path to the image file to analyze (required for analysis) |
-| `--prompt` | Custom prompt for image analysis |
-| `--system-prompt` | Custom system prompt to guide AI behavior |
-| `--client-id` | Client ID for user-assigned managed identity (optional) |
-| `--test-connection` | Test the connection to Azure OpenAI service |
+### Manual Deployment (if needed)
 
-## 🔐 Authentication Flow
+```powershell
+# Redeploy everything
+azd deploy
 
-The application uses `ChainedTokenCredential` with the following priority:
+# Or just redeploy the container
+docker build -t <registry>.azurecr.io/streamlit-app:latest .
+docker push <registry>.azurecr.io/streamlit-app:latest
+az webapp restart --name <app-name> --resource-group <rg-name>
+```
 
-1. **User-Assigned Managed Identity** (if `--client-id` specified)
-2. **System-Assigned Managed Identity** (in Azure environments)
-3. **Azure CLI** (for local development)
+## 📊 Monitoring & Management
 
-This ensures secure, keyless authentication in all scenarios.
+### GitHub Actions Dashboard
+- Monitor build success rates and deployment times
+- View security scan results
+- Track deployment history
+
+### Azure Portal
+- **App Service** - Performance metrics and logs
+- **Container Registry** - Image storage and sizes  
+- **Application Insights** - Detailed application telemetry
+- **Azure OpenAI** - Usage metrics and model performance
+
+### Useful Commands
+
+```powershell
+# Check deployment status
+az webapp show --name <app-name> --resource-group <rg-name> --query state
+
+# View application logs
+az webapp log tail --name <app-name> --resource-group <rg-name>
+
+# List container images
+az acr repository list --name <registry-name>
+
+# Validate CI/CD setup
+.\validate-cicd-setup.ps1
+
+# Test CI/CD pipeline
+.\test-cicd-trigger.ps1
+```
+
+## 🔐 Security Features
+
+- ✅ **Managed Identity Authentication** - No API keys in code
+- ✅ **HTTPS Only** - All traffic encrypted
+- ✅ **RBAC Permissions** - Least privilege access model
+- ✅ **Container Security** - Non-root user execution
+- ✅ **Vulnerability Scanning** - Automated security checks
+- ✅ **Network Security** - Azure-native integration
+- ✅ **Secret Management** - GitHub secrets for CI/CD
 
 ## 📁 Project Structure
 
 ```
-├── app.py                 # Command-line interface
-├── streamlit_app.py       # Web interface
-├── image_analyzer.py      # Core image analysis logic
-├── requirements.txt       # Python dependencies
-├── azure.yaml            # Azure Developer CLI configuration
-├── README.md             # This file
-└── infra/                # Infrastructure as Code
-    ├── main.bicep        # Bicep template
-    └── main.parameters.json
+image-analysis-demo/
+├── 🐳 Dockerfile                     # Container definition
+├── 📝 .dockerignore                  # Build optimization
+├── 🚀 setup-complete-cicd.ps1        # One-command setup
+├── ✅ validate-cicd-setup.ps1        # Prerequisites validation
+├── 🧪 test-cicd-trigger.ps1          # Pipeline testing
+├── 📜 deploy-azd.ps1                 # AZD deployment
+├── 📜 deploy.ps1                     # Traditional deployment
+├── 📊 azure.yaml                     # AZD configuration
+├── 🎯 streamlit_app.py               # Main application
+├── 🧠 image_analyzer.py              # AI analysis logic
+├── 📦 requirements.txt               # Python dependencies
+├── 📚 README.md                      # This file
+├── 📋 AUTOMATED_CICD_GUIDE.md        # Detailed CI/CD guide
+├── 📄 CONTAINER_DEPLOYMENT_SUMMARY.md # Container deployment info
+└── 📁 infra/                         # Infrastructure as Code
+    ├── main.bicep                    # Main Bicep template
+    ├── resources.bicep               # Resource definitions
+    └── main.parameters.json          # Deployment parameters
+└── 📁 .github/workflows/             # CI/CD Workflows
+    ├── deploy-to-azure.yml           # Main deployment pipeline
+    └── pr-validation.yml             # Pull request validation
 ```
 
-## 🔧 Configuration
+## 🎯 Next Steps
 
-### Environment Variables
+1. **🔧 Configure GitHub Secrets** - Required for automated deployment
+2. **🚀 Push Your First Commit** - Trigger the automated pipeline
+3. **📊 Monitor the Pipeline** - Check GitHub Actions tab
+4. **🌐 Access Your App** - Visit the deployed application URL
+5. **📈 Scale as Needed** - Azure App Service auto-scaling available
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL | Required |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | Model deployment name | `gpt-4o` |
-| `AZURE_CLIENT_ID` | User-assigned managed identity client ID | Optional |
+## 🆘 Troubleshooting
 
-### Supported Image Formats
+### Common Issues
 
-- JPEG (.jpg, .jpeg)
-- PNG (.png)
-- BMP (.bmp)
-- GIF (.gif)
-- TIFF (.tiff, .tif)
+- **Build Failures**: Check Dockerfile and requirements.txt
+- **Deployment Issues**: Verify GitHub secrets configuration
+- **Authentication Errors**: Ensure managed identity is properly configured
+- **Health Check Failures**: Check application logs in Azure Portal
 
-## 🚨 Error Handling
+### Getting Help
 
-The application includes comprehensive error handling for:
+- **Validation Script**: `.\validate-cicd-setup.ps1` - Diagnoses common issues
+- **Azure Logs**: Check App Service logs in Azure Portal
+- **GitHub Actions**: Review workflow logs for specific errors
+- **Documentation**: See `AUTOMATED_CICD_GUIDE.md` for detailed setup
 
-- Missing or invalid image files
-- Network connectivity issues
-- Authentication failures
-- API rate limits (with automatic retry)
-- Invalid model responses
+## 📖 Additional Documentation
 
-## 📊 Examples
+- 📋 **[Automated CI/CD Guide](AUTOMATED_CICD_GUIDE.md)** - Complete setup instructions
+- 📦 **[Container Deployment Summary](CONTAINER_DEPLOYMENT_SUMMARY.md)** - Infrastructure details
+- 🔧 **[Pipeline Setup Guide](.github/PIPELINE_SETUP.md)** - GitHub Actions configuration
 
-```powershell
-# Basic image analysis
-python app.py vacation_photo.jpg
+---
 
-# Technical diagram analysis
-python app.py architecture_diagram.png --prompt "Explain the system architecture shown in this diagram"
-
-# Medical image analysis (ensure compliance with your use case)
-python app.py scan.jpg --prompt "Describe what you see in this medical image"
-
-# Art analysis
-python app.py painting.jpg --prompt "Analyze the artistic style, composition, and color palette"
-```
-
-## 🌐 Deployment
-
-### Azure Container Apps (Recommended)
-
-1. Build and deploy using Azure Developer CLI:
-```powershell
-azd up
-```
-
-2. Enable managed identity on the container app
-3. Assign appropriate RBAC roles
-
-### Azure App Service
-
-1. Deploy the application to App Service
-2. Enable managed identity
-3. Configure environment variables
-4. Assign RBAC roles
-
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📞 Support
-
-For issues and questions:
-- Check the error handling section above
-- Ensure proper Azure CLI authentication
-- Verify managed identity permissions
-- Review Azure OpenAI service status
+🎉 **You now have a fully automated CI/CD pipeline for your Azure AI Image Analysis Demo!** Every commit automatically builds, tests, and deploys your application to Azure. Happy coding! 🚀

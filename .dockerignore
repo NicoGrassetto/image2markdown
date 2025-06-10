@@ -1,0 +1,46 @@
+# Ignore unnecessary files for container build
+.git
+.gitignore
+README.md
+DEPLOYMENT.md
+DEPLOYMENT_SUMMARY.md
+deploy.ps1
+deploy.sh
+azure.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Azure/Deployment files
+infra/
+.env
+.azure/

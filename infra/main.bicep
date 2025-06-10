@@ -8,25 +8,34 @@ targetScope = 'subscription'
 param resourceGroupName string = 'rg-${environmentName}'
 
 @description('Name of the Azure AI Hub')
-param aiHubName string = 'aihub${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param aiHubName string = 'aihub${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the Azure AI Project')
-param aiProjectName string = 'aiproject${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param aiProjectName string = 'aiproject${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the Azure OpenAI service')
-param openAiName string = 'openai${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param openAiName string = 'openai${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the storage account')
-param storageAccountName string = 'st${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param storageAccountName string = 'st${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the Key Vault')
-param keyVaultName string = 'kv${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param keyVaultName string = 'kv${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the Application Insights')
-param appInsightsName string = 'ai${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param appInsightsName string = 'ai${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Name of the user-assigned managed identity')
-param userManagedIdentityName string = 'id${toLower(uniqueString(subscription().id, resourceGroupName, environmentName))}'
+param userManagedIdentityName string = 'id${toLower(uniqueString(subscription().id, environmentName))}'
+
+@description('Name of the Azure Container Registry')
+param containerRegistryName string = 'acr${toLower(uniqueString(subscription().id, environmentName))}'
+
+@description('Name of the App Service Plan')
+param appServicePlanName string = 'asp${toLower(uniqueString(subscription().id, environmentName))}'
+
+@description('Name of the App Service (Web App)')
+param appServiceName string = 'app${toLower(uniqueString(subscription().id, environmentName))}'
 
 @description('Location for all resources')
 param location string = 'eastus'
@@ -58,6 +67,9 @@ module aiResources 'resources.bicep' = {
     keyVaultName: keyVaultName
     appInsightsName: appInsightsName
     userManagedIdentityName: userManagedIdentityName
+    containerRegistryName: containerRegistryName
+    appServicePlanName: appServicePlanName
+    appServiceName: appServiceName
     location: location
     tags: tags
   }
@@ -83,3 +95,8 @@ output userManagedIdentityName string = aiResources.outputs.userManagedIdentityN
 output userManagedIdentityId string = aiResources.outputs.userManagedIdentityId
 output userManagedIdentityClientId string = aiResources.outputs.userManagedIdentityClientId
 output userManagedIdentityPrincipalId string = aiResources.outputs.userManagedIdentityPrincipalId
+output containerRegistryName string = aiResources.outputs.containerRegistryName
+output containerRegistryLoginServer string = aiResources.outputs.containerRegistryLoginServer
+output appServicePlanName string = aiResources.outputs.appServicePlanName
+output appServiceName string = aiResources.outputs.appServiceName
+output appServiceDefaultHostName string = aiResources.outputs.appServiceDefaultHostName
